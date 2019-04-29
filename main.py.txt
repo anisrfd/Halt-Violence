@@ -1,0 +1,85 @@
+import numpy as np
+import cv2
+from keras.preprocessing import image
+import winsound
+
+def diffImg(t0, t1, t2):
+  d1 = cv2.absdiff(t2, t1)
+  d2 = cv2.absdiff(t1, t0)
+  return cv2.bitwise_and(d1, d2)
+
+
+#-----------------------------
+#opencv initialization
+
+face_cascade = cv2.CascadeClassifier('C:\\Users\\User\\tensorflow-101\\model\\haarcascade_frontalface_default.xml')
+
+cap = cv2.VideoCapture(0)
+
+fourcc = cv2.VideoWriter_fourcc(*'XVID')
+ret, img = cap.read()
+if ret:
+    t_minus = cv2.cvtColor(cap.read()[1], cv2.COLOR_RGB2GRAY)
+    t = cv2.cvtColor(cap.read()[1], cv2.COLOR_RGB2GRAY)
+    t_plus = cv2.cvtColor(cap.read()[1], cv2.COLOR_RGB2GRAY)
+
+#-----------------------------
+#face expression recognizer initialization
+from keras.models import model_from_json
+model = model_from_json(open("C:\\Users\\User\\tensorflow-101\\model\\facial_expression_model_structure.json", "r").read())
+model.load_weights('C:\\Users\\User\\tensorflow-101\\model\\facial_expression_model_weights.h5') #load weights
+
+#-----------------------------
+
+emotions = ('angry', 'disgust', 'fear', 'happy', 'sad', 'surprise', 'neutral')
+
+while(cap.isOpened()):
+    
+    if ret:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+        
+
+	#print(faces) #locations of detected faces
+
+	
+    for (x,y,w,h) in faces:
+        cv2.rectangle(img,(x,y),(x+w,y+h),(255,0,0),2) #draw rectangle to main image
+        detected_face = img[int(y):int(y+h), int(x):int(x+w)] #crop detected face
+        detected_face = cv2.cvtColor(detected_face, cv2.COLOR_BGR2GRAY) #transform to gray scale
+        detected_face = cv2.resize(detected_face, (48, 48)) #resize to 48x48
+		
+        img_pixels = image.img_to_array(detected_face)
+        img_pixels = np.expand_dims(img_pixels, axis = 0)
+		
+        img_pixels /= 255 #pixels are in scale of [0, 255]. normalize all pixels in scale of [0, 1]
+		
+        predictions = model.predict(img_pixels) #store probabilities of 7 expressions
+		
+		#find max indexed array 0: angry, 1:disgust, 2:fear, 3:happy, 4:sad, 5:surprise, 6:neutral
+        max_index = np.argmax(predictions[0])
+		
+        emotion = emotions[max_index]
+		
+		#write emotion text above rectangle
+        cv2.putText(img, emotion, (int(x), int(y)), cv2.FONT_HERSHEY_SIMPLEX, 1, (255,255,255), 2)
+		
+		#process on detected face end
+		#-------------------------
+    if cv2.countNonZero(diffImg(t_minus, t, t_plus)) >200000 and (emotion=='sad'or emotion=='angry'or emotion=='fear'or emotion=='surprise') :
+        duration = 1000  # millisecond
+        freq = 500  # Hz
+        winsound.Beep(freq, duration)
+      # Read next image
+    t_minus = t
+    t = t_plus
+    t_plus = cv2.cvtColor(cap.read()[1], cv2.COLOR_RGB2GRAY) 
+    cv2.imshow('img',img)
+    ret, img = cap.read()
+	
+    if cv2.waitKey(1) & 0xFF == ord('q'): #press q to quit
+        break
+
+#kill open cv things		
+cap.release()
+cv2.destroyAllWindows()
